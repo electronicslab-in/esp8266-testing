@@ -21,10 +21,16 @@ const int motorPin2 = D2;  // GPIO4
 const int motorPin3 = D5;  // GPIO14
 const int motorPin4 = D6;  // GPIO12
 
+// Global PID variables
+float pitch_P_value = 1.2, roll_P_value = 1.2, yaw_P_value = 1.2;
+float pitch_I_value = 0.0, roll_I_value = 0.0, yaw_I_value = 0.0;
+float pitch_D_value = 0.0, roll_D_value = 0.0, yaw_D_value = 0.0;
+
 // Web server running on port 80
 ESP8266WebServer server(80);
 
-void handleConfig() {
+// webpage for manual pwm control GUI
+void manualPWMControlHTTP() {
   // If form data is received, update variables
   if (server.hasArg("mode")) {
     mode = server.arg("mode");
@@ -33,6 +39,16 @@ void handleConfig() {
   if (server.hasArg("motor2")) motor2 = server.arg("motor2").toInt();
   if (server.hasArg("motor3")) motor3 = server.arg("motor3").toInt();
   if (server.hasArg("motor4")) motor4 = server.arg("motor4").toInt();
+
+  // Master control option
+  bool masterEnabled = false;
+  int masterValue = 0;
+  if (server.hasArg("master_enable")) masterEnabled = true;
+  if (server.hasArg("master")) masterValue = server.arg("master").toInt();
+
+  if (masterEnabled) {
+    motor1 = motor2 = motor3 = motor4 = masterValue;
+  }
 
   // Build HTML page
   String html = "<!DOCTYPE html><html><head><title>ESP Config</title>";
@@ -44,14 +60,21 @@ void handleConfig() {
   html += "<p><b>Current Mode:</b> " + mode + "</p>";
 
   // Config form
-  html += "<form action='/config' method='GET'>";
+  html += "<form action='/manual-pwm-control' method='GET'>";
 
   // Checkbox for manual mode
   html += "<p><input type='checkbox' name='mode' value='manual_motor_pwm_control'";
   if (mode == "manual_motor_pwm_control") html += " checked";
   html += "> Enable Manual Motor PWM Control</p>";
 
-  // Sliders (0–100)
+  // Master control checkbox + slider
+  html += "<h3>Master Control</h3>";
+  html += "<p><input type='checkbox' name='master_enable' value='1'";
+  if (masterEnabled) html += " checked";
+  html += "> Enable Master Slider (controls all motors)</p>";
+  html += "Master: <input class='slider' type='range' name='master' min='0' max='100' value='" + String(masterValue) + "' oninput='mout.value=this.value'> <output id='mout'>" + String(masterValue) + "</output>%<br>";
+
+  // Individual motor sliders
   html += "<h3>Motor Duty Cycles (0–100)</h3>";
   html += "Motor 1: <input class='slider' type='range' name='motor1' min='0' max='100' value='" + String(motor1) + "' oninput='m1out.value=this.value'> <output id='m1out'>" + String(motor1) + "</output>%<br>";
   html += "Motor 2: <input class='slider' type='range' name='motor2' min='0' max='100' value='" + String(motor2) + "' oninput='m2out.value=this.value'> <output id='m2out'>" + String(motor2) + "</output>%<br>";
@@ -67,6 +90,89 @@ void handleConfig() {
   server.send(200, "text/html", html);
 }
 
+
+// webpage for PID GUI
+void PIDControlHTTP() {
+  // If form data is received, update variables
+  if (server.hasArg("mode")) {
+    mode = server.arg("mode");
+  } else if (mode == "pid_control") {
+    // if form didn’t send "mode" (checkbox unchecked), reset
+    mode = "none";
+  }
+
+  if (server.hasArg("pitch_P_value")) pitch_P_value = server.arg("pitch_P_value").toFloat();
+  if (server.hasArg("roll_P_value"))  roll_P_value  = server.arg("roll_P_value").toFloat();
+  if (server.hasArg("yaw_P_value"))   yaw_P_value   = server.arg("yaw_P_value").toFloat();
+
+  if (server.hasArg("pitch_I_value")) pitch_I_value = server.arg("pitch_I_value").toFloat();
+  if (server.hasArg("roll_I_value"))  roll_I_value  = server.arg("roll_I_value").toFloat();
+  if (server.hasArg("yaw_I_value"))   yaw_I_value   = server.arg("yaw_I_value").toFloat();
+
+  if (server.hasArg("pitch_D_value")) pitch_D_value = server.arg("pitch_D_value").toFloat();
+  if (server.hasArg("roll_D_value"))  roll_D_value  = server.arg("roll_D_value").toFloat();
+  if (server.hasArg("yaw_D_value"))   yaw_D_value   = server.arg("yaw_D_value").toFloat();
+
+  // Build HTML page
+  String html = "<!DOCTYPE html><html><head><title>PID Config</title>";
+  html += "<style>body{font-family:Arial;margin:20px;} input{margin:5px;}</style>";
+  html += "</head><body>";
+  html += "<h1>PID Control Configuration</h1>";
+
+  // Form starts
+  html += "<form action='/pid-control' method='GET'>";
+
+  // Mode selection checkbox (INSIDE form now)
+  html += "<p><input type='checkbox' name='mode' value='pid_control'";
+  if (mode == "pid_control") html += " checked";
+  html += "> Enable PID Control</p>";
+
+  // P values
+  html += "<h3>P Values</h3>";
+  html += "Enter Pitch P value (current = " + String(pitch_P_value) + ") = <input type='text' name='pitch_P_value' value='" + String(pitch_P_value) + "'><br>";
+  html += "Enter Roll  P value (current = " + String(roll_P_value)  + ") = <input type='text' name='roll_P_value' value='" + String(roll_P_value) + "'><br>";
+  html += "Enter Yaw   P value (current = " + String(yaw_P_value)   + ") = <input type='text' name='yaw_P_value' value='" + String(yaw_P_value) + "'><br>";
+
+  // I values
+  html += "<h3>I Values</h3>";
+  html += "Enter Pitch I value (current = " + String(pitch_I_value) + ") = <input type='text' name='pitch_I_value' value='" + String(pitch_I_value) + "'><br>";
+  html += "Enter Roll  I value (current = " + String(roll_I_value)  + ") = <input type='text' name='roll_I_value' value='" + String(roll_I_value) + "'><br>";
+  html += "Enter Yaw   I value (current = " + String(yaw_I_value)   + ") = <input type='text' name='yaw_I_value' value='" + String(yaw_I_value) + "'><br>";
+
+  // D values
+  html += "<h3>D Values</h3>";
+  html += "Enter Pitch D value (current = " + String(pitch_D_value) + ") = <input type='text' name='pitch_D_value' value='" + String(pitch_D_value) + "'><br>";
+  html += "Enter Roll  D value (current = " + String(roll_D_value)  + ") = <input type='text' name='roll_D_value' value='" + String(roll_D_value) + "'><br>";
+  html += "Enter Yaw   D value (current = " + String(yaw_D_value)   + ") = <input type='text' name='yaw_D_value' value='" + String(yaw_D_value) + "'><br>";
+
+  // Submit button
+  html += "<br><input type='submit' value='Save PID Settings'>";
+  html += "</form>";
+
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+
+// Webpage for Home GUI
+void handleHomePageHTTP() {
+  String html = "<!DOCTYPE html><html><head><title>ESP Drone Control</title>";
+  html += "<style>body{font-family:Arial;margin:20px;} a{display:block;margin:10px 0;font-size:18px;}</style>";
+  html += "</head><body>";
+  html += "<h1>Drone Control Home</h1>";
+  html += "<p>Select a configuration page:</p>";
+  
+  html += "<a href='/manual-pwm-control' target='_blank'>Manual PWM Control</a>";
+  html += "<a href='/pid-control' target='_blank'>PID Control</a>";
+  
+  html += "</body></html>";
+  
+  server.send(200, "text/html", html);
+}
+
+
+// brushed ESC function
 void brushedESCPWMControl() {
   if (mode == "manual_motor_pwm_control") {
     analogWrite(motorPin1, map(motor1, 0, 100, 0, 1023));
@@ -107,7 +213,11 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   // Setup web routes
-  server.on("/config", handleConfig);
+  server.on("/", handleHomePageHTTP);
+  server.on("/manual-pwm-control", manualPWMControlHTTP);
+  server.on("/pid-control", PIDControlHTTP);
+
+
   server.begin();
   Serial.println("Web server started");
 }
@@ -126,6 +236,8 @@ void loop() {
     if (clients > 0) {
       digitalWrite(CONNECTION_LED, LOW);  // solid ON
       Serial.println("Device Connected");
+      Serial.print("Access Point IP Address: ");
+      Serial.println(WiFi.softAPIP());
     } else {
       Serial.println("No device connected...");
       Serial.print("Access Point IP Address: ");
@@ -172,6 +284,10 @@ void loop() {
     Serial.print(motor4);
     Serial.println("%");
 
+    Serial.print("  pitch_P_value: "); Serial.print(pitch_P_value); Serial.print("  pitch_I_value: "); Serial.print(pitch_I_value); Serial.print("  pitch_D_value: "); Serial.println(pitch_D_value);
+    Serial.print("  roll_P_value: "); Serial.print(roll_P_value); Serial.print("  roll_I_value: "); Serial.print(roll_I_value); Serial.print("  roll_D_value: "); Serial.println(roll_D_value);
+    Serial.print("  yaw_P_value: "); Serial.print(yaw_P_value); Serial.print("  yaw_I_value: "); Serial.print(yaw_I_value); Serial.print("  yaw_D_value: "); Serial.println(yaw_D_value);
+    
     Serial.println("=================================");
   }
 
