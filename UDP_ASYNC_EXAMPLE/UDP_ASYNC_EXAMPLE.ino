@@ -1,5 +1,7 @@
 //library can be added from  https://github.com/me-no-dev/ESPAsyncUDP
 
+//ASYNC UDP - does not blocks main thread
+
 #include <ESP8266WiFi.h>
 #include <ESPAsyncUDP.h>
 
