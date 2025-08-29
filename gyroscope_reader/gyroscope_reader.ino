@@ -1,9 +1,12 @@
 #include <Wire.h>
 
+// Define Gyroscope related variables
 float RatePitch, RateRoll, RateYaw;
 float RateCalibrationPitch, RateCalibrationRoll, RateCalibrationYaw;
 int RateCalibrationNumber;
 
+
+// Gyro sensor reader function
 void gyro_signals(void) {
   
   // switch on the low pass filter
@@ -83,8 +86,7 @@ void loop() {
   if (millis() - lastMainLoop >= 20) { // 50 Hz main control loop
     lastMainLoop = millis();
 
-
-    // step 1. read Gyroscope Values;
+    // ----------- read Gyroscope Values------------
     gyro_signals();
     RateRoll = RateRoll - RateCalibrationRoll; //remove the calculated Average calibration error
     RatePitch = RatePitch - RateCalibrationPitch;
